@@ -55,9 +55,9 @@ const clock=new THREE.Clock();
 function obeliskGeo(h,w,d){const h2=h/2;return new THREE.BufferGeometry().setFromPoints([
 new THREE.Vector3(0,h2,0),new THREE.Vector3(w/2,h2/3,d/2),new THREE.Vector3(-w/2,h2/3,d/2),new THREE.Vector3(-w/2,h2/3,-d/2),new THREE.Vector3(w/2,h2/3,-d/2),
 new THREE.Vector3(0,-h2,0),new THREE.Vector3(w/2,-h2/3,d/2),new THREE.Vector3(-w/2,-h2/3,d/2),new THREE.Vector3(-w/2,-h2/3,-d/2),new THREE.Vector3(w/2,-h2/3,-d/2)
-]).toNonIndexed();}
+]);}
 
-function buildObelisk(){const g=obeliskGeo(2.4,.9,.9);const p=g.attributes.position;a=new Float32Array(p.count*3);
+function buildObelisk(){const g=obeliskGeo(2.4,.9,.9);const p=g.attributes.position;
 const idx=[0,1,2,0,2,3,0,3,4,0,4,1,5,2,1,5,3,2,5,4,3,5,1,4,1,2,6,2,3,7,3,4,8,4,1,9,6,7,2,7,8,3,8,9,4,9,6,1];
 const pos=[],norms=[];for(let i=0;i<idx.length;i+=3){const a=idx[i],b=idx[i+1],c=idx[i+2];
 const p1=new THREE.Vector3(p.getX(a),p.getY(a),p.getZ(a));
