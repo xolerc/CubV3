@@ -10,21 +10,17 @@ body{overflow:hidden;background:#000;cursor:crosshair}
 canvas{display:block}
 #loader{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000;color:#00ff88;font-family:'Times New Roman',serif;transition:opacity 2s ease;pointer-events:none}
 #loader.hidden{opacity:0}
-#loader h1{font-size:clamp(1.2rem,4vw,2.5rem);letter-spacing:1em;font-weight:100;margin-left:1em;opacity:0;animation:fadeIn 1s .3s forwards}
-#loader p{font-size:.7rem;opacity:0;margin-top:3em;letter-spacing:.5em;animation:fadeIn 1s 1.2s forwards}
-.bar{width:clamp(80px,20vw,160px);height:1px;background:#00ff8822;margin-top:2em;position:relative;overflow:hidden;opacity:0;animation:fadeIn 1s .6s forwards}
-.bar::after{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:#00ff88;animation:load 2.5s .6s ease forwards}
-@keyframes load{to{left:100%}}
-@keyframes fadeIn{to{opacity:1}}
+#loader h1{font-size:clamp(1.2rem,4vw,2.5rem);letter-spacing:1em;font-weight:100;margin-left:1em;opacity:0;animation:fi 1s .3s forwards}
+#loader p{font-size:.7rem;opacity:0;margin-top:3em;letter-spacing:.5em;font-style:italic;animation:fi 1s 1.2s forwards}
+.bar{width:clamp(80px,20vw,160px);height:1px;background:#00ff8844;margin-top:2em;position:relative;overflow:hidden;opacity:0;animation:fi 1s .6s forwards}
+.bar::after{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:#00ff88;animation:ld 2.5s .6s ease forwards}
+@keyframes ld{to{left:100%}}
+@keyframes fi{to{opacity:1}}
 @media(max-width:600px){#loader h1{letter-spacing:.5em;margin-left:.5em}}
 </style>
 </head>
 <body>
-<div id="loader">
-<h1>AWAKENING</h1>
-<div class="bar"></div>
-<p>The eye opens</p>
-</div>
+<div id="loader"><h1>AWAKENING</h1><div class="bar"></div><p>The eye opens</p></div>
 <script>
 function hideL(){document.getElementById('loader').classList.add('hidden')}
 setTimeout(hideL,5000);addEventListener('error',hideL);addEventListener('unhandledrejection',hideL);
@@ -44,7 +40,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-const loader=document.getElementById('loader');
+try{
 
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x000000);
@@ -62,30 +58,46 @@ document.body.prepend(renderer.domElement);
 
 const composer=new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene,camera));
-const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.55,.12,.04);
-composer.addPass(bloom);
+const bloomPass=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.55,.12,.04);
+composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 
-try{
+// Environment map for reflections
+function initEnv(){
+const pmrem=new THREE.PMREMGenerator(renderer);
+const c=document.createElement('canvas');c.width=512;c.height=256;
+const g=c.getContext('2d');const gr=g.createLinearGradient(0,0,0,256);
+gr.addColorStop(0,'#000005');gr.addColorStop(.3,'#000010');gr.addColorStop(.6,'#050008');
+gr.addColorStop(.8,'#100005');gr.addColorStop(1,'#1a0005');
+g.fillStyle=gr;g.fillRect(0,0,512,256);
+for(let j=0;j<80;j++){g.fillStyle=`rgba(255,255,255,${Math.random()*.1})`;
+g.fillRect(Math.random()*512,Math.random()*256,2+Math.random()*3,2+Math.random()*3);}
+const tex=new THREE.CanvasTexture(c);
+tex.mapping=THREE.EquirectangularReflectionMapping;
+const env=pmrem.fromEquirectangular(tex);
+scene.environment=env.texture;
+tex.dispose();pmrem.dispose();
+return env.texture;
+}
+const envMap=initEnv();
 
-
+// Lights
 scene.add(new THREE.AmbientLight(0x050508,.6));
-
 const lavaDir=new THREE.DirectionalLight(0xff3300,3);lavaDir.position.set(0,-4,1.5);scene.add(lavaDir);
 const eyePt=new THREE.PointLight(0x00ff66,4,10);eyePt.position.set(0,0,1.2);scene.add(eyePt);
 const fillLight=new THREE.DirectionalLight(0x002244,.4);fillLight.position.set(-3,4,5);scene.add(fillLight);
 const backLight=new THREE.DirectionalLight(0x440022,.3);backLight.position.set(0,1,-6);scene.add(backLight);
 
+// Mouse
 const mouse={x:0,y:0,tx:0,ty:0};
 addEventListener('mousemove',e=>{mouse.tx=(e.clientX/innerWidth)*2-1;mouse.ty=-(e.clientY/innerHeight)*2+1});
 addEventListener('touchmove',e=>{const t=e.touches[0];mouse.tx=(t.clientX/innerWidth)*2-1;mouse.ty=-(t.clientY/innerHeight)*2+1},{passive:true});
-
 const clock=new THREE.Clock();
 
+// Sphere with opening
 const sphereVS=`varying vec3 vPos;varying vec3 vNorm;varying vec3 vV;
 void main(){vPos=position;vNorm=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(position,1.);vV=-mv.xyz;gl_Position=projectionMatrix*mv;}`;
-
-const sphereFS=`uniform float uT;uniform vec3 uRim;uniform vec3 uGlow;
+const sphereFS=`uniform float uT;uniform vec3 uRim;uniform vec3 uGlow;uniform samplerCube envMap;
 varying vec3 vPos;varying vec3 vNorm;varying vec3 vV;
 float h(vec3 p){p=fract(p*.3183+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
 float n(vec3 p){vec3 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
@@ -109,15 +121,17 @@ vec3 gg=uGlow*ed*1.8;vec3 vg=uGlow*vs*.12;
 vec3 c=bs*(amb+.4)+df+spc+rc+gg+vg;
 float fr=pow(1.-max(dot(V,N),0.),3.);
 c+=mix(vec3(.02),uGlow*.25,fr);if(!gl_FrontFacing)c+=uGlow*.5;
+vec4 envCol=texture(envMap,reflect(-V,N));
+c=mix(c,envCol.rgb*.03,.2);
 gl_FragColor=vec4(c,1.);}`;
-
-const sphereM=new THREE.ShaderMaterial({
+const sphereMat=new THREE.ShaderMaterial({
 vertexShader:sphereVS,fragmentShader:sphereFS,
-uniforms:{uT:{value:0},uRim:{value:new THREE.Color(0xff3300)},uGlow:{value:new THREE.Color(0x00ff66)}},
+uniforms:{uT:{value:0},uRim:{value:new THREE.Color(0xff3300)},uGlow:{value:new THREE.Color(0x00ff66)},envMap:{value:envMap}},
 side:THREE.DoubleSide});
-const sphere=new THREE.Mesh(new THREE.SphereGeometry(2.2,96,96),sphereM);
+const sphere=new THREE.Mesh(new THREE.SphereGeometry(2.2,96,96),sphereMat);
 scene.add(sphere);
 
+// Eye
 const eVS=`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 const eFS=`uniform vec2 uM;uniform float uT;uniform vec2 uR;varying vec2 vUv;
 float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -144,29 +158,30 @@ vec2 s2=uv-vec2(-.18,.12);float sd2=length(s2);float sp2=exp(-sd2*sd2*180.);c+=v
 float gl=exp(-d*8.)*.12;c+=vec3(0.,.7,.25)*gl;
 float vs=f(vec2(uv.x*40.,uv.y*6.+uT*.05));vs=smoothstep(.65,.8,vs);c=mix(c,vec3(.08,.01,.01),vs*(1.-ir)*.25);
 gl_FragColor=vec4(c,1.);}`;
-
-const eyeM=new THREE.ShaderMaterial({
+const eyeMat=new THREE.ShaderMaterial({
 vertexShader:eVS,fragmentShader:eFS,
 uniforms:{uM:{value:new THREE.Vector2},uT:{value:0},uR:{value:new THREE.Vector2(innerWidth,innerHeight)}},
 side:THREE.DoubleSide,transparent:true,depthWrite:true});
-const eye=new THREE.Mesh(new THREE.CircleGeometry(.85,48),eyeM);
-eye.position.set(0,0,1.4);
-scene.add(eye);
+const eye=new THREE.Mesh(new THREE.CircleGeometry(.85,48),eyeMat);
+eye.position.set(0,0,1.4);scene.add(eye);
 
-const auraM=new THREE.ShaderMaterial({
+// Eye glow aura
+const auraMat=new THREE.ShaderMaterial({
 vertexShader:eVS,
 fragmentShader:`varying vec2 vUv;void main(){vec2 uv=vUv-.5;float d=length(uv);float a=exp(-d*d*6.)*.25;gl_FragColor=vec4(0.,.8,.3,a);}`,
 transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
-const aura=new THREE.Mesh(new THREE.CircleGeometry(1.2,32),auraM);
-aura.position.set(0,0,1.35);
-scene.add(aura);
+const aura=new THREE.Mesh(new THREE.CircleGeometry(1.2,32),auraMat);
+aura.position.set(0,0,1.35);scene.add(aura);
 
-function pt(){const c=document.createElement('canvas');c.width=64;c.height=64;
+// Particle texture
+function mkTex(s0,s1,s2){const c=document.createElement('canvas');c.width=64;c.height=64;
 const g=c.getContext('2d'),gr=g.createRadialGradient(32,32,0,32,32,32);
-gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(.15,'rgba(255,200,100,.8)');gr.addColorStop(1,'rgba(255,100,0,0)');
+gr.addColorStop(0,s0);gr.addColorStop(.15,s1);gr.addColorStop(1,s2);
 g.fillStyle=gr;g.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);}
-const ptTex=pt();
+const ptTex=mkTex('rgba(255,255,255,1)','rgba(255,200,100,.8)','rgba(255,100,0,0)');
+const spTex=mkTex('rgba(0,255,100,1)','rgba(0,255,100,.7)','rgba(0,255,100,0)');
 
+// Ember particles
 const emberCount=600,embPos=new Float32Array(emberCount*3),embBase=new Float32Array(emberCount*2),embSp=new Float32Array(emberCount),embPh=new Float32Array(emberCount);
 for(let i=0;i<emberCount;i++){const ta=Math.random()*Math.PI*2,r=.8+Math.random()*3.5;
 embPos[i*3]=Math.cos(ta)*r;embPos[i*3+1]=-3+Math.random()*3;embPos[i*3+2]=Math.sin(ta)*r-1;
@@ -175,42 +190,37 @@ embSp[i]=.15+Math.random()*.35;embPh[i]=Math.random()*6;}
 const embGeo=new THREE.BufferGeometry();
 embGeo.setAttribute('position',new THREE.BufferAttribute(embPos,3));
 const embMat=new THREE.PointsMaterial({size:.1,map:ptTex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,color:0xff4400,opacity:.5,sizeAttenuation:true});
-const embers=new THREE.Points(embGeo,embMat);
-scene.add(embers);
+const embers=new THREE.Points(embGeo,embMat);scene.add(embers);
 
+// Sparkle particles
 const spCount=300,spPos=new Float32Array(spCount*3),spBase=new Float32Array(spCount*3),spPh=new Float32Array(spCount);
 for(let i=0;i<spCount;i++){const ta=Math.random()*Math.PI*2,r=.5+Math.random()*2;
 const x=Math.cos(ta)*r*(.5+Math.random()*.5),y=(Math.random()-.5)*1.5,z=Math.sin(ta)*r*(.5+Math.random()*.5)+.5;
-spPos[i*3]=x;spPos[i*3+1]=y;spPos[i*3+2]=z;
-spBase[i*3]=x;spBase[i*3+1]=y;spBase[i*3+2]=z;
+spPos[i*3]=x;spPos[i*3+1]=y;spPos[i*3+2]=z;spBase[i*3]=x;spBase[i*3+1]=y;spBase[i*3+2]=z;
 spPh[i]=Math.random()*Math.PI*2;}
 const spGeo=new THREE.BufferGeometry();
 spGeo.setAttribute('position',new THREE.BufferAttribute(spPos,3));
-const spMat=new THREE.PointsMaterial({size:.06,map:ptTex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,color:0x00ff66,opacity:.7,sizeAttenuation:true});
-const sparkles=new THREE.Points(spGeo,spMat);
-scene.add(sparkles);
+const spMat=new THREE.PointsMaterial({size:.06,map:spTex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,color:0x00ff66,opacity:.7,sizeAttenuation:true});
+const sparkles=new THREE.Points(spGeo,spMat);scene.add(sparkles);
 
+// Rune sprites
 const runeChars=['ᚠ','ᚢ','ᚦ','ᚨ','ᚱ','ᚲ','ᚷ','ᚹ','ᚺ','ᚾ','ᛁ','ᛃ','ᛇ','ᛈ','ᛉ','ᛊ','ᛏ','ᛒ','ᛖ','ᛗ','ᛚ','ᛝ','ᛟ','ᛞ','ᛜ','ᛠ'];
 function mkRune(c){const ca=document.createElement('canvas');ca.width=64;ca.height=64;
 const g=ca.getContext('2d'),gr=g.createRadialGradient(32,32,0,32,32,32);
 gr.addColorStop(0,'rgba(0,255,100,1)');gr.addColorStop(.25,'rgba(0,255,100,.7)');gr.addColorStop(1,'rgba(0,255,100,0)');
 g.fillStyle=gr;g.fillRect(0,0,64,64);
 g.fillStyle='#00ff88';g.font='bold 30px serif';g.textAlign='center';g.textBaseline='middle';g.fillText(c,32,32);
-const tex=new THREE.CanvasTexture(ca);const m=new THREE.SpriteMaterial({map:tex,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true});
-return new THREE.Sprite(m);}
+return new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(ca),blending:THREE.AdditiveBlending,depthWrite:false,transparent:true}));}
 
+// Orbital rings with runes
 function ring(rad,tube,tiltX,tiltZ,count){
 const g=new THREE.Group();
 const r=new THREE.Mesh(new THREE.TorusGeometry(rad,tube,12,64),new THREE.MeshStandardMaterial({color:0x111111,metalness:.9,roughness:.3,side:THREE.DoubleSide}));
 g.add(r);
-for(let i=0;i<count;i++){const a=(i/count)*Math.PI*2;
-const sp=mkRune(runeChars[i%runeChars.length]);
-sp.position.set(rad*Math.cos(a),tube/2,rad*Math.sin(a));
-sp.scale.set(.28,.28,1);g.add(sp);}
+for(let i=0;i<count;i++){const a=(i/count)*Math.PI*2;const sp=mkRune(runeChars[i%runeChars.length]);
+sp.position.set(rad*Math.cos(a),tube/2,rad*Math.sin(a));sp.scale.set(.28,.28,1);g.add(sp);}
 g.rotation.x=tiltX;g.rotation.z=tiltZ;
-g.userData={spd:(.06+.04*Math.random())*(Math.random()<.5?1:-1)};
-return g;}
-
+g.userData={spd:(.06+.04*Math.random())*(Math.random()<.5?1:-1)};return g;}
 const rings=[];
 rings.push(ring(3.2,.08,Math.PI/2+.08,0,16));
 rings.push(ring(2.9,.06,Math.PI/2+.45,.2,14));
@@ -218,24 +228,36 @@ rings.push(ring(2.6,.07,Math.PI/2+.75,.45,12));
 rings.push(ring(3.6,.035,Math.PI/2+.2,.7,18));
 rings.forEach(r=>scene.add(r));
 
+// Floor glow
 const floorGlow=new THREE.Mesh(new THREE.RingGeometry(1.5,4,48),new THREE.MeshBasicMaterial({color:0xff2200,transparent:true,opacity:.04,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false}));
 floorGlow.rotation.x=-Math.PI/2;floorGlow.position.y=-2.2;scene.add(floorGlow);
 
+// Green halo
 const greenHalo=new THREE.Mesh(new THREE.RingGeometry(2.3,2.6,64),new THREE.MeshBasicMaterial({color:0x00ff66,transparent:true,opacity:.04,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
 greenHalo.rotation.x=Math.PI/2;greenHalo.position.z=-.1;scene.add(greenHalo);
 
+// God rays (light shafts)
+function makeRayGlow(){const c=document.createElement('canvas');c.width=128;c.height=512;
+const g=c.getContext('2d');const gr=g.createRadialGradient(64,0,0,64,0,128);
+gr.addColorStop(0,'rgba(0,255,100,.15)');gr.addColorStop(.3,'rgba(0,255,100,.08)');gr.addColorStop(1,'rgba(0,255,100,0)');
+g.fillStyle=gr;g.fillRect(0,0,128,512);return new THREE.CanvasTexture(c);}
+const rayTex=makeRayGlow();
+const rayMat=new THREE.MeshBasicMaterial({map:rayTex,transparent:true,opacity:.08,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+const godRays=[];
+for(let i=0;i<16;i++){const a=(i/16)*Math.PI*2;const m=new THREE.Mesh(new THREE.PlaneGeometry(.15,5),rayMat.clone());
+m.position.set(0,0,2);m.rotation.x=Math.PI*.18;m.rotation.z=a;scene.add(m);godRays.push(m);}
+
+// Main loop
 setTimeout(hideL,2800);
 
 function animate(){
 requestAnimationFrame(animate);
 const t=clock.getElapsedTime();
+mouse.x+=(mouse.tx-mouse.x)*.05;mouse.y+=(mouse.ty-mouse.y)*.05;
 
-mouse.x+=(mouse.tx-mouse.x)*.05;
-mouse.y+=(mouse.ty-mouse.y)*.05;
-
-sphereM.uniforms.uT.value=t;
-eyeM.uniforms.uT.value=t;
-eyeM.uniforms.uM.value.set(mouse.x,mouse.y);
+sphereMat.uniforms.uT.value=t;
+eyeMat.uniforms.uT.value=t;
+eyeMat.uniforms.uM.value.set(mouse.x,mouse.y);
 
 const br=1+Math.sin(t*.5)*.005;eye.scale.set(br,br,1);
 eyePt.intensity=3+Math.sin(t*.3)*1.5;
@@ -248,6 +270,7 @@ sphere.position.y=Math.sin(t*.15)*.05;
 sphere.position.z=Math.cos(t*.1)*.03;
 
 rings.forEach((r,i)=>{r.rotation.y+=r.userData.spd*.012*(1+i*.2);});
+godRays.forEach((m,i)=>{m.rotation.z+=.002*(1+i%2*2-1);m.position.y=Math.sin(t*.3+i)*.02;});
 
 const ep=embers.geometry.attributes.position.array;
 for(let i=0;i<emberCount;i++){
@@ -265,15 +288,15 @@ sparkles.geometry.attributes.position.needsUpdate=true;
 
 composer.render();
 }
-
 animate();
 
 addEventListener('resize',()=>{
 const w=innerWidth,h=innerHeight;
 camera.aspect=w/h;camera.updateProjectionMatrix();
 renderer.setSize(w,h);composer.setSize(w,h);
-eyeM.uniforms.uR.value.set(w,h);});
-}catch(e){console.error(e);hideL();}
+eyeMat.uniforms.uR.value.set(w,h);});
+
+}catch(e){console.error('Three.js error:',e);hideL();}
 </script>
 </body>
 </html>
