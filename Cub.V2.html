@@ -28,15 +28,21 @@ canvas{display:block}
 <script type="importmap">
 {
 "imports":{
-"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-"three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+"three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+"three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
 }
 }
 </script>
 <script type="module">
-import*as THREE from'three';import{EffectComposer}from'three/addons/postprocessing/EffectComposer.js';import{RenderPass}from'three/addons/postprocessing/RenderPass.js';import{UnrealBloomPass}from'three/addons/postprocessing/UnrealBloomPass.js';import{OutputPass}from'three/addons/postprocessing/OutputPass.js';
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const $=id=>document.getElementById(id),loader=$('loader');
+const done=()=>loader.classList.add('hidden');
+addEventListener('error',done);addEventListener('unhandledrejection',done);
 
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x000000);
@@ -58,6 +64,7 @@ const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.55,.1
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
+try{
 function createEnvMap(){const s=256;const f=[];for(let i=0;i<6;i++){const c=document.createElement('canvas');c.width=s;c.height=s;const g=c.getContext('2d');const gr=g.createLinearGradient(0,0,0,s);gr.addColorStop(0,'#000005');gr.addColorStop(.3,'#000010');gr.addColorStop(.6,'#050008');gr.addColorStop(.8,'#100005');gr.addColorStop(1,'#1a0005');g.fillStyle=gr;g.fillRect(0,0,s,s);for(let j=0;j<30;j++){g.fillStyle=`rgba(255,255,255,${Math.random()*.12})`;g.fillRect(Math.random()*s,Math.random()*s,2,2);}f.push(new THREE.CanvasTexture(c));}return new THREE.CubeTexture(f);}
 const envMap=createEnvMap();scene.environment=envMap;
 
@@ -277,6 +284,7 @@ const w=innerWidth,h=innerHeight;
 camera.aspect=w/h;camera.updateProjectionMatrix();
 renderer.setSize(w,h);composer.setSize(w,h);
 eyeM.uniforms.uR.value.set(w,h);});
+}catch(e){console.error(e);done();}
 </script>
 </body>
 </html>
